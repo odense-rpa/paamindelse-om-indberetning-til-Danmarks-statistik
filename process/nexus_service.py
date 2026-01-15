@@ -36,20 +36,33 @@ class NexusService:
         )
 
         for forløb_item in forløb:
-            # Kontroller indsatser:
-            filtrerede_indsats_referencer = filter_by_path(
+            # Nødvendig da Afgjort er en aktiv state i denne proces, men ikke generelt
+            aktive_statistik_indsats_states = [
+                "Bestilt",
+                "Bevilliget",
+                "Anvist",
+                "Planlagt, ikke bestilt",
+                "Ændret", 
+                "Fremtidigt ændret", 
+                "Ansøgt", 
+                "Afgjort",
+                "Iværksat",
+                "Etableret"
+            ]
+
+            indsats_referencer = filter_by_path(
                 referencer,
                 path_pattern=f"/Børn og Unge Grundforløb/{forløb_item["name"]}/Indsatser/basketGrantReference",
                 active_pathways_only=True,
             )
 
             filtrerede_indsats_referencer = self.nexus.indsatser.filtrer_indsats_referencer(
-                indsats_referencer=filtrerede_indsats_referencer,
+                indsats_referencer=indsats_referencer,
                 kun_aktive=True,                        
             )
             
             grundindsatser = [item for item in filtrerede_indsats_referencer if item["name"] in regler["Grundindsats"]]            
-            statistikindsatser = [item for item in filtrerede_indsats_referencer if item["name"] in regler["Statistikindsats"]]
+            statistikindsatser = [item for item in indsats_referencer if item["name"] in regler["Statistikindsats"] and item.get("workflowState", {}).get("name") in aktive_statistik_indsats_states]
 
             if len(grundindsatser) > 0 and len(statistikindsatser) == 0:
                 statistik_indsats = self.opret_statistikindsats(
