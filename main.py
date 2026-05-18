@@ -4,7 +4,13 @@ import logging
 import sys
 import os
 
-from automation_server_client import AutomationServer, Workqueue, WorkItemError, Credential, WorkItemStatus
+from automation_server_client import (
+    AutomationServer,
+    Workqueue,
+    WorkItemError,
+    Credential,
+    WorkItemStatus,
+)
 from kmd_nexus_client import NexusClientManager
 from nexus_database_client import NexusDatabaseClient
 from odk_tools.tracking import Tracker
@@ -18,31 +24,36 @@ nexus_service: NexusService
 tracker: Tracker
 proces_navn = "Påmindelse om indberetning til Danmarks statistik"
 
+
 async def populate_queue(workqueue: Workqueue):
     regler = get_excel_mapping()
     test_borgere = ["050505-9996", "010858-9995", "251248-9996"]
-    
+
     for organisationsnavn in regler.get("Organisation", []):
-        organisation = nexus.organisationer.hent_organisation_ved_navn(organisationsnavn)
+        organisation = nexus.organisationer.hent_organisation_ved_navn(
+            organisationsnavn
+        )
 
         if organisation is None:
             logging.warning(f"Organisation ikke fundet i Nexus: {organisationsnavn}")
             continue
 
         borgere = nexus.organisationer.hent_borgere_for_organisation(organisation)
-        
+
         for borger in borgere:
             cpr = borger["patientIdentifier"]["identifier"]
-            eksisterende_kødata = workqueue.get_item_by_reference(cpr, WorkItemStatus.NEW)
+            eksisterende_kødata = workqueue.get_item_by_reference(
+                cpr, WorkItemStatus.NEW
+            )
 
             if len(eksisterende_kødata) > 0 or cpr in test_borgere:
                 continue
 
             try:
                 borger_objekt = nexus.borgere.hent_borger(cpr)
-            except ValueError:                
+            except ValueError:
                 # Invalid Cpr-nummer
-                continue            
+                continue
 
             if borger_objekt is None:
                 logging.warning(f"Borger ikke fundet i Nexus: {cpr}")
@@ -50,13 +61,14 @@ async def populate_queue(workqueue: Workqueue):
 
             workqueue.add_item(borger_objekt, cpr)
 
+
 async def process_workqueue(workqueue: Workqueue):
-    logger = logging.getLogger(__name__)    
+    logger = logging.getLogger(__name__)
 
     for item in workqueue:
         with item:
             data = item.data  # Item data deserialized from json as dict
- 
+
             try:
                 borger = nexus.hent_fra_reference(data)
                 nexus_service.indsats_kontrol(borger=borger)
@@ -68,40 +80,35 @@ async def process_workqueue(workqueue: Workqueue):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO        
-    )
+    logging.basicConfig(level=logging.INFO)
 
     ats = AutomationServer.from_environment()
     workqueue = ats.workqueue()
 
     nexus_credential = Credential.get_credential("KMD Nexus - produktion")
-    nexus_database_credential = Credential.get_credential("KMD Nexus - database")    
+    nexus_database_credential = Credential.get_credential("KMD Nexus - database")
     tracking_credential = Credential.get_credential("Odense SQL Server")
 
     tracker = Tracker(
-        username=tracking_credential.username, 
-        password=tracking_credential.password
+        username=tracking_credential.username, password=tracking_credential.password
     )
 
     nexus = NexusClientManager(
         client_id=nexus_credential.username,
         client_secret=nexus_credential.password,
         instance=nexus_credential.data["instance"],
-    )    
-    
+    )
+
     nexus_database_client = NexusDatabaseClient(
-        host = nexus_database_credential.data["hostname"],
-        port = nexus_database_credential.data["port"],
-        user = nexus_database_credential.username,
-        password = nexus_database_credential.password,
-        database = nexus_database_credential.data["database_name"],
+        host=nexus_database_credential.data["hostname"],
+        port=nexus_database_credential.data["port"],
+        user=nexus_database_credential.username,
+        password=nexus_database_credential.password,
+        database=nexus_database_credential.data["database_name"],
     )
 
     nexus_service = NexusService(
-        nexus=nexus,
-        nexus_database=nexus_database_client,
-        tracker=tracker
+        nexus=nexus, nexus_database=nexus_database_client, tracker=tracker
     )
 
     # Parse command line arguments
